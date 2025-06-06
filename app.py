@@ -18,7 +18,7 @@ def get_size_class(mass):
 @app.route('/')
 def index():
     return render_template_string("""
-    <h1>よつぼし収穫データ</h1>
+    <h1>🍓よつぼし収穫データ</h1>
     <form method="post" action="/clear" style="margin-bottom:10px;">
         <button type="submit">全データ削除</button>
     </form>
