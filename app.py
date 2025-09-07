@@ -18,12 +18,12 @@ def get_size_class(mass):
 @app.route('/')
 def index():
     return render_template_string("""
-    <h1>🍓よつぼし収穫データ</h1>
+    <h1>🍓Harvest Data</h1>
     <form method="post" action="/clear" style="margin-bottom:10px;">
-        <button type="submit">全データ削除</button>
+        <button type="submit">Delete</button>
     </form>
     <table border="1">
-    <tr><th>推定重量 (g)</th><th>距離 (cm)</th><th>規格</th><th>時刻</th><th>操作</th></tr>
+    <tr><th>Weight (g)</th><th>Distance (cm)</th><th>Size</th><th>Time</th><th>option</th></tr>
     {% for entry in data %}
       {% if entry.device_on %}
         <tr><td colspan="5">📡 Device On {{ entry.timestamp }}</td></tr>
@@ -79,3 +79,4 @@ def delete():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
+
