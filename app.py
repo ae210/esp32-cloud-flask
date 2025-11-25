@@ -64,10 +64,7 @@ class HarvestData(db.Model):
     # サーバー側での登録時刻（並び替え用）
     created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
 
-
-@app.before_first_request
-def create_tables():
-    """初回アクセス時にテーブルを作成"""
+with app.app_context():
     db.create_all()
 
 
@@ -221,3 +218,4 @@ def delete():
 if __name__ == "__main__":
     # ローカル実行用。Render では gunicorn などから呼ばれる想定。
     app.run(host="0.0.0.0", port=10000, debug=True)
+
