@@ -87,7 +87,6 @@ def update():
         size=get_size_class(mass),
         temp=temp,
         humid=humid,
-        timestamp=datetime.utcnow(),
     )
 
     db.session.add(row)
@@ -515,3 +514,4 @@ def humid_overview():
 # --------------------------------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000, debug=True)
+
