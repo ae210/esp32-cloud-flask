@@ -20,7 +20,6 @@ db_url = os.environ.get("DATABASE_URL")
 if not db_url:
     raise RuntimeError("DATABASE_URL が設定されていません")
 
-# （もし postgres:// 形式の場合は補正したいとき用）
 if db_url.startswith("postgres://"):
     db_url = db_url.replace("postgres://", "postgresql://", 1)
 
@@ -34,15 +33,6 @@ db = SQLAlchemy(app)
 # モデル定義
 # --------------------------------
 class HarvestData(db.Model):
-    """
-    1レコード = 1回の計測データ
-      - timestamp: サーバーが受信した時刻（UTC）
-      - mass: 重量[g]
-      - distance: 距離[cm]
-      - size: S/M/L/2L のサイズ判定
-      - temp: 温度[°C]
-      - humid: 湿度[%]
-    """
     __tablename__ = "harvest_data"
 
     id        = db.Column(db.Integer, primary_key=True)
@@ -56,7 +46,6 @@ class HarvestData(db.Model):
 
 
 with app.app_context():
-    # テーブルがなければ作成
     db.create_all()
 
 
@@ -64,9 +53,6 @@ with app.app_context():
 # 共通関数：サイズ分類
 # --------------------------------
 def get_size_class(mass):
-    """
-    質量[g]から S/M/L/2L を決める簡易ルール
-    """
     if mass is None:
         return None
     if mass < 8:
@@ -78,7 +64,7 @@ def get_size_class(mass):
     elif mass < 21:
         return "2L"
     else:
-        return "2L"  # 一旦 2L 上限
+        return "2L"
 
 
 # --------------------------------
@@ -86,19 +72,6 @@ def get_size_class(mass):
 # --------------------------------
 @app.route("/update", methods=["POST"])
 def update():
-    """
-    ESP から JSON を受け取って DB に保存するエンドポイント。
-
-    期待するJSON例:
-      {
-        "mass": 12.34,
-        "distance": 5.67,
-        "temp": 23,
-        "humid": 48
-      }
-
-    timestamp は送ってこなくてOK。サーバー受信時刻を入れる。
-    """
     data = request.get_json()
     if not data:
         return "Invalid", 400
@@ -123,14 +96,10 @@ def update():
 
 
 # --------------------------------
-# UI: ダッシュボード（トップページ）
+# UI: ダッシュボード
 # --------------------------------
 @app.route("/")
 def home():
-    """
-    パワポ2枚目イメージの「メニュー画面」。
-    収穫データ / 温度 / 湿度 への3つのボタン。
-    """
     return render_template_string("""
     <!doctype html>
     <html>
@@ -173,14 +142,10 @@ def home():
 
 
 # --------------------------------
-# UI: 収穫データ 日別グラフ
+# UI: 収穫データ 日別グラフ + 日付リンク
 # --------------------------------
 @app.route("/harvest")
 def harvest_overview():
-    """
-    日ごとの max / avg / min mass を集計して折れ線グラフ表示。
-    グラフのプロットをクリック → /harvest/<date> へ遷移。
-    """
     q = (
         db.session.query(
             func.date(HarvestData.timestamp).label("day"),
@@ -193,15 +158,15 @@ def harvest_overview():
         .order_by(func.date(HarvestData.timestamp))
     )
 
-    rows = [
-        {
-            "day": r.day.isoformat(),          # "2025-11-26"
+    rows = []
+    for r in q.all():
+        rows.append({
+            "day": r.day,
+            "day_str": r.day.isoformat(),
             "max_mass": float(r.max_mass),
             "avg_mass": float(r.avg_mass),
             "min_mass": float(r.min_mass),
-        }
-        for r in q.all()
-    ]
+        })
 
     return render_template_string("""
     <!doctype html>
@@ -213,6 +178,9 @@ def harvest_overview():
         body { font-family: sans-serif; padding: 16px; }
         a.back { display: inline-block; margin-bottom: 8px; text-decoration: none; }
         #chart-container { width: 100%; max-width: 900px; height: 400px; }
+        table { border-collapse: collapse; margin-top: 16px; }
+        th, td { border: 1px solid #333; padding: 4px 8px; font-size: 14px; }
+        th { background: #f0f0f0; }
       </style>
       <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     </head>
@@ -224,18 +192,39 @@ def harvest_overview():
         <canvas id="dayChart"></canvas>
       </div>
 
-      <p>※ 点をクリックすると、その日のデータ一覧ページに移動します。</p>
+      <p>※ 下の表の「日付」をクリックすると、その日のデータ一覧ページに移動します。</p>
+
+      <table>
+        <tr>
+          <th>日付</th>
+          <th>最大 (g)</th>
+          <th>平均 (g)</th>
+          <th>最小 (g)</th>
+        </tr>
+        {% for s in stats %}
+        <tr>
+          <td>
+            <a href="{{ url_for('harvest_day_detail', date_str=s.day_str) }}">
+              {{ s.day_str }}
+            </a>
+          </td>
+          <td>{{ "%.1f"|format(s.max_mass) }}</td>
+          <td>{{ "%.1f"|format(s.avg_mass) }}</td>
+          <td>{{ "%.1f"|format(s.min_mass) }}</td>
+        </tr>
+        {% endfor %}
+      </table>
 
       <script>
         const stats   = {{ stats | tojson }};
-        const labels  = stats.map(s => s.day);
+        const labels  = stats.map(s => s.day_str);
         const maxData = stats.map(s => s.max_mass);
         const avgData = stats.map(s => s.avg_mass);
         const minData = stats.map(s => s.min_mass);
 
         const ctx = document.getElementById('dayChart').getContext('2d');
 
-        const chart = new Chart(ctx, {
+        new Chart(ctx, {
           type: 'line',
           data: {
             labels: labels,
@@ -251,21 +240,9 @@ def harvest_overview():
             scales: {
               x: { title: { display: true, text: '日付' } },
               y: { title: { display: true, text: '重量 (g)' }, beginAtZero: true }
-            },
-            interaction: { mode: 'nearest', intersect: true }
+            }
           }
         });
-
-        // プロットをクリックしたら、その日の詳細ページへ遷移
-        document.getElementById('dayChart').onclick = (evt) => {
-          const points = chart.getElementsAtEventForMode(
-            evt, 'nearest', { intersect: true }, true
-          );
-          if (!points.length) return;
-          const idx = points[0].index;
-          const day = labels[idx];   // "2025-11-26"
-          window.location.href = "/harvest/" + encodeURIComponent(day);
-        };
       </script>
     </body>
     </html>
@@ -273,16 +250,10 @@ def harvest_overview():
 
 
 # --------------------------------
-# UI: ある1日の収穫データ一覧
+# UI: ある1日の収穫データ一覧 + 距離-重量散布図
 # --------------------------------
 @app.route("/harvest/<date_str>")
 def harvest_day_detail(date_str):
-    """
-    例: /harvest/2025-11-26
-
-    指定日の 00:00〜24:00 のデータをテーブルで一覧表示。
-    （今は削除ボタンなどは未実装。あとで追加可能）
-    """
     try:
         day = datetime.strptime(date_str, "%Y-%m-%d").date()
     except ValueError:
@@ -299,6 +270,13 @@ def harvest_day_detail(date_str):
         .all()
     )
 
+    # 距離-重量の散布図用データ
+    scatter_points = [
+        {"x": r.distance, "y": r.mass}
+        for r in rows
+        if (r.distance is not None) and (r.mass is not None)
+    ]
+
     return render_template_string("""
     <!doctype html>
     <html>
@@ -310,11 +288,19 @@ def harvest_day_detail(date_str):
         table { border-collapse: collapse; margin-top: 12px; }
         th, td { border: 1px solid #333; padding: 4px 8px; font-size: 14px; }
         th { background: #f0f0f0; }
+        #scatter-container { width: 100%; max-width: 700px; height: 350px; margin-top: 16px; }
       </style>
+      <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     </head>
     <body>
       <a href="{{ url_for('harvest_overview') }}">← 日別グラフに戻る</a>
       <h1>🍓 {{ day }} のデータ一覧</h1>
+
+      <h2>距離-重量 グラフ</h2>
+      <div id="scatter-container">
+        <canvas id="scatterChart"></canvas>
+      </div>
+
       <table>
         <tr>
           <th>時刻(UTC)</th>
@@ -330,32 +316,81 @@ def harvest_day_detail(date_str):
           <td>{{ "%.1f"|format(r.mass or 0) }}</td>
           <td>{{ "%.1f"|format(r.distance or 0) }}</td>
           <td>{{ r.size or "" }}</td>
-          <td>{{ "%.1f"|format(r.temp or 0) }}</td>
-          <td>{{ "%.1f"|format(r.humid or 0) }}</td>
+          <td>{{ "%.0f"|format(r.temp or 0) }}</td>
+          <td>{{ "%.0f"|format(r.humid or 0) }}</td>
         </tr>
         {% endfor %}
       </table>
+
+      <script>
+        const scatterData = {{ scatter | tojson }};
+        const ctx = document.getElementById('scatterChart').getContext('2d');
+
+        new Chart(ctx, {
+          type: 'scatter',
+          data: {
+            datasets: [{
+              label: '距離 vs 重量',
+              data: scatterData,
+              showLine: false,
+              pointRadius: 4,
+              borderWidth: 1
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              x: {
+                title: { display: true, text: '距離 (cm)' }
+              },
+              y: {
+                title: { display: true, text: '重量 (g)' },
+                beginAtZero: true
+              }
+            }
+          }
+        });
+      </script>
     </body>
     </html>
-    """, day=day, rows=rows)
+    """, day=day, rows=rows, scatter=scatter_points)
 
 
 # --------------------------------
-# UI: 温度 / 湿度 ページ（ひとまずダミー）
+# UI: 温度グラフ（日 - 平均温度）
 # --------------------------------
 @app.route("/temp")
 def temp_overview():
-    return "🌡 温度グラフページ（あとで実装）"
+    q = (
+        db.session.query(
+            func.date(HarvestData.timestamp).label("day"),
+            func.avg(HarvestData.temp).label("avg_temp"),
+        )
+        .filter(HarvestData.temp != None)
+        .group_by(func.date(HarvestData.timestamp))
+        .order_by(func.date(HarvestData.timestamp))
+    )
 
+    rows = [
+        {
+            "day_str": r.day.isoformat(),
+            "avg_temp": float(r.avg_temp),
+        }
+        for r in q.all()
+    ]
 
-@app.route("/humid")
-def humid_overview():
-    return "💧 湿度グラフページ（あとで実装）"
-
-
-# --------------------------------
-# ローカル実行用
-# --------------------------------
-if __name__ == "__main__":
-    # Render では Procfile/コマンドで起動される想定
-    app.run(host="0.0.0.0", port=10000, debug=True)
+    return render_template_string("""
+    <!doctype html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <title>温度（日別平均）</title>
+      <style>
+        body { font-family: sans-serif; padding: 16px; }
+        #chart-container { width: 100%; max-width: 900px; height: 400px; }
+      </style>
+      <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    </head>
+    <body>
+      <a href="{{ url_for(_
