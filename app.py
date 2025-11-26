@@ -393,4 +393,125 @@ def temp_overview():
       <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     </head>
     <body>
-      <a href="{{ url_for(_
+      <a href="{{ url_for('home') }}">← Dashboard に戻る</a>
+      <h1>🌡 温度（日別 平均値）</h1>
+
+      <div id="chart-container">
+        <canvas id="tempChart"></canvas>
+      </div>
+
+      <script>
+        const stats  = {{ stats | tojson }};
+        const labels = stats.map(s => s.day_str);
+        const data   = stats.map(s => s.avg_temp);
+
+        const ctx = document.getElementById('tempChart').getContext('2d');
+
+        new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: '平均温度 (°C)',
+              data: data,
+              pointRadius: 4,
+              borderWidth: 2
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              x: { title: { display: true, text: '日付' } },
+              y: { title: { display: true, text: '温度 (°C)' } }
+            }
+          }
+        });
+      </script>
+    </body>
+    </html>
+    """, stats=rows)
+
+
+# --------------------------------
+# UI: 湿度グラフ（日 - 平均湿度）
+# --------------------------------
+@app.route("/humid")
+def humid_overview():
+    q = (
+        db.session.query(
+            func.date(HarvestData.timestamp).label("day"),
+            func.avg(HarvestData.humid).label("avg_humid"),
+        )
+        .filter(HarvestData.humid != None)
+        .group_by(func.date(HarvestData.timestamp))
+        .order_by(func.date(HarvestData.timestamp))
+    )
+
+    rows = [
+        {
+            "day_str": r.day.isoformat(),
+            "avg_humid": float(r.avg_humid),
+        }
+        for r in q.all()
+    ]
+
+    return render_template_string("""
+    <!doctype html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <title>湿度（日別平均）</title>
+      <style>
+        body { font-family: sans-serif; padding: 16px; }
+        #chart-container { width: 100%; max-width: 900px; height: 400px; }
+      </style>
+      <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    </head>
+    <body>
+      <a href="{{ url_for('home') }}">← Dashboard に戻る</a>
+      <h1>💧 湿度（日別 平均値）</h1>
+
+      <div id="chart-container">
+        <canvas id="humidChart"></canvas>
+      </div>
+
+      <script>
+        const stats  = {{ stats | tojson }};
+        const labels = stats.map(s => s.day_str);
+        const data   = stats.map(s => s.avg_humid);
+
+        const ctx = document.getElementById('humidChart').getContext('2d');
+
+        new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: '平均湿度 (%)',
+              data: data,
+              pointRadius: 4,
+              borderWidth: 2
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              x: { title: { display: true, text: '日付' } },
+              y: { title: { display: true, text: '湿度 (%)' },
+                  suggestedMin: 0, suggestedMax: 100 }
+            }
+          }
+        });
+      </script>
+    </body>
+    </html>
+    """, stats=rows)
+
+
+# --------------------------------
+# ローカル実行用
+# --------------------------------
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=10000, debug=True)
