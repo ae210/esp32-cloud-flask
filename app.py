@@ -4,11 +4,11 @@ from datetime import datetime, timedelta, timezone
 from flask import Flask, request, render_template_string
 from flask_sqlalchemy import SQLAlchemy
 
-# JST(日本時間)へのオフセット
+# JST
 JST_OFFSET = timedelta(hours=9)
 
 # --------------------------------
-# Flask & DB 初期化
+#初期化
 # --------------------------------
 app = Flask(__name__)
 
@@ -33,24 +33,23 @@ class HarvestData(db.Model):
     __tablename__ = "harvest_data"
 
     id        = db.Column(db.Integer, primary_key=True)
-    # DB には UTC で保存（default=datetime.utcnow）
     timestamp = db.Column(db.DateTime, default=datetime.utcnow,
                           index=True, nullable=False)
 
     mass      = db.Column(db.Float, nullable=True)
     distance  = db.Column(db.Float, nullable=True)
     size      = db.Column(db.String(10), nullable=True)
-    temp      = db.Column(db.Float, nullable=True)   # 温度（ESP は int でも OK）
+    temp      = db.Column(db.Float, nullable=True)   # 温度
     humid     = db.Column(db.Float, nullable=True)   # 湿度
 
 
-# テーブルが無ければ作成
+
 with app.app_context():
     db.create_all()
 
 
 # --------------------------------
-# 共通関数：サイズ分類
+# サイズ分類
 # --------------------------------
 def get_size_class(mass):
     if mass is None:
@@ -68,7 +67,7 @@ def get_size_class(mass):
 
 
 # --------------------------------
-# API: ESP からのデータ受信
+# データ受信
 # --------------------------------
 @app.route("/update", methods=["POST"])
 def update():
@@ -94,7 +93,7 @@ def update():
 
 
 # --------------------------------
-# 日付リスト（JST）を取得
+# JST取得
 # --------------------------------
 def get_available_dates_jst():
     """DB にある全 timestamp から JST の日付リストを作る"""
@@ -104,7 +103,7 @@ def get_available_dates_jst():
     for (ts,) in rows:
         if ts is None:
             continue
-        d = (ts + JST_OFFSET).date()   # UTC → JST に直して日付だけ
+        d = (ts + JST_OFFSET).date()  
         dates.add(d)
     dates = sorted(dates)
 
@@ -112,25 +111,22 @@ def get_available_dates_jst():
     for d in dates:
         result.append({
             "date": d,
-            "date_str": d.isoformat(),     # 2025-11-26
-            "label": d.strftime("%m/%d"),  # 11/26
+            "date_str": d.isoformat(),     
+            "label": d.strftime("%m/%d"),  
         })
     return result
 
 
 # --------------------------------
-# ダッシュボード（今日 or 指定日）
-#   /?date=YYYY-MM-DD で日付切り替え
+# ダッシュボード
 # --------------------------------
 @app.route("/")
 def dashboard():
-    # 左サイドバーの日付リスト（JST）
     all_dates = get_available_dates_jst()
 
     # 今日（JST）
     today_jst = (datetime.utcnow() + JST_OFFSET).date()
 
-    # クエリ ?date=2025-11-26 があればそれ、無ければ今日
     date_str = request.args.get("date")
     if date_str:
         try:
@@ -154,9 +150,9 @@ def dashboard():
         .all()
     )
 
-    # タイムテーブル用（JST 文字列に変換）
+    # タイムテーブル用
     table_rows = []
-    # 温度・湿度グラフ用（横軸：時刻）
+    # 温度・湿度グラフ用
     time_series = []
     # 距離‐重量散布図用
     scatter_points = []
@@ -186,7 +182,7 @@ def dashboard():
     is_today = (selected_date == today_jst)
 
     # --------------------------------
-    # HTML テンプレ（全部ここに書いてます）
+    # HTML テンプレ
     # --------------------------------
     return render_template_string("""
     <!doctype html>
@@ -510,3 +506,4 @@ def dashboard():
 # --------------------------------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000, debug=True)
+
