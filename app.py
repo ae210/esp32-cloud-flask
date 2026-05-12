@@ -337,32 +337,34 @@ def index():
             color: #000000;
         }
 
-        .charts {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 18px;
-            margin-bottom: 18px;
-        }
+ .charts {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+}
 
-        .chart-box {
-            border: 1.5px solid #000000;
-            border-radius: 8px;
-            padding: 12px;
-            background-color: #ffffff;
-        }
+.chart-box {
+    border: 1.5px solid #000000;
+    border-radius: 8px;
+    padding: 8px;
+    background-color: #ffffff;
+    height: 250px;
+    box-sizing: border-box;
+}
 
-        .chart-title {
-            font-size: 22px;
-            font-weight: bold;
-            color: #000000;
-            margin-bottom: 8px;
-        }
+.chart-title {
+    font-size: 18px;
+    font-weight: bold;
+    color: #000000;
+    margin-bottom: 4px;
+}
 
-        canvas {
-            width: 100%;
-            height: 280px;
-        }
-
+.chart-box canvas {
+    display: block;
+    width: 100% !important;
+    height: 200px !important;
+}
         table {
             border-collapse: collapse;
             width: 100%;
