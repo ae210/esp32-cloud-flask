@@ -15,6 +15,7 @@ from collections import OrderedDict
 import os
 import json
 
+# Load .env file for local development
 load_dotenv()
 
 app = Flask(__name__)
@@ -82,17 +83,13 @@ def parse_datetime(value):
         return value
 
     s = str(value).strip()
-
-    # Remove Z if ISO format uses UTC suffix
     s = s.replace("Z", "+00:00")
 
-    # Try ISO format first
     try:
         return datetime.fromisoformat(s)
     except ValueError:
         pass
 
-    # Try common formats
     formats = [
         "%Y-%m-%d %H:%M:%S",
         "%Y-%m-%d %H:%M",
@@ -143,6 +140,10 @@ def avg(values):
     return sum(values) / len(values)
 
 
+def safe_date_id(date_label):
+    return "date-" + str(date_label).replace("-", "").replace("/", "").replace(" ", "-")
+
+
 # --- Data list page ---
 @app.route("/")
 def index():
@@ -163,6 +164,7 @@ def index():
         if date_label not in grouped:
             grouped[date_label] = {
                 "date": date_label,
+                "date_id": safe_date_id(date_label),
                 "records": [],
                 "labels": [],
                 "mass_values": [],
@@ -221,6 +223,10 @@ def index():
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <style>
+        html {
+            scroll-behavior: smooth;
+        }
+
         body {
             font-family: Arial, Helvetica, sans-serif;
             color: #000000;
@@ -238,7 +244,7 @@ def index():
         h2 {
             color: #000000;
             font-size: 30px;
-            margin-top: 36px;
+            margin-top: 0;
             margin-bottom: 12px;
             border-left: 8px solid #000000;
             padding-left: 12px;
@@ -260,6 +266,53 @@ def index():
 
         button:hover {
             background-color: #eeeeee;
+        }
+
+        .layout {
+            display: flex;
+            gap: 24px;
+            align-items: flex-start;
+        }
+
+        .sidebar {
+            width: 230px;
+            min-width: 230px;
+            position: sticky;
+            top: 20px;
+            border: 1.5px solid #000000;
+            border-radius: 8px;
+            padding: 14px;
+            background-color: #ffffff;
+        }
+
+        .sidebar-title {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 12px;
+            color: #000000;
+        }
+
+        .sidebar a {
+            display: block;
+            color: #000000;
+            text-decoration: none;
+            font-size: 20px;
+            padding: 9px 6px;
+            border-bottom: 1px solid #dddddd;
+        }
+
+        .sidebar a:hover {
+            background-color: #eeeeee;
+        }
+
+        .main-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        section {
+            margin-bottom: 48px;
+            scroll-margin-top: 20px;
         }
 
         .summary {
@@ -343,7 +396,17 @@ def index():
             margin-top: 24px;
         }
 
-        @media (max-width: 900px) {
+        @media (max-width: 1000px) {
+            .layout {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                min-width: 0;
+                position: static;
+            }
+
             .charts {
                 grid-template-columns: 1fr;
             }
@@ -358,127 +421,143 @@ def index():
         <button type="submit">Delete All</button>
     </form>
 
-    {% if grouped_data|length == 0 %}
-        <div class="no-data">No data available.</div>
-    {% endif %}
+    <div class="layout">
+        <aside class="sidebar">
+            <div class="sidebar-title">Date</div>
 
-    {% for group in grouped_data %}
-        <section>
-            <h2>{{ group.date }}</h2>
+            {% if grouped_data|length == 0 %}
+                <div>No date available</div>
+            {% endif %}
 
-            <div class="summary">
-                <div class="summary-card">
-                    Records<br>
-                    <strong>{{ group.summary.count }}</strong>
-                </div>
+            {% for group in grouped_data %}
+                <a href="#{{ group.date_id }}">{{ group.date }}</a>
+            {% endfor %}
+        </aside>
 
-                <div class="summary-card">
-                    Avg. Weight<br>
-                    <strong>
-                        {% if group.summary.avg_mass is not none %}
-                            {{ "%.1f"|format(group.summary.avg_mass) }} g
-                        {% else %}
-                            -
-                        {% endif %}
-                    </strong>
-                </div>
+        <main class="main-content">
+            {% if grouped_data|length == 0 %}
+                <div class="no-data">No data available.</div>
+            {% endif %}
 
-                <div class="summary-card">
-                    Avg. Distance<br>
-                    <strong>
-                        {% if group.summary.avg_distance is not none %}
-                            {{ "%.1f"|format(group.summary.avg_distance) }} cm
-                        {% else %}
-                            -
-                        {% endif %}
-                    </strong>
-                </div>
+            {% for group in grouped_data %}
+                <section id="{{ group.date_id }}">
+                    <h2>{{ group.date }}</h2>
 
-                <div class="summary-card">
-                    Avg. Temperature<br>
-                    <strong>
-                        {% if group.summary.avg_temp is not none %}
-                            {{ "%.1f"|format(group.summary.avg_temp) }} °C
-                        {% else %}
-                            -
-                        {% endif %}
-                    </strong>
-                </div>
-            </div>
+                    <div class="summary">
+                        <div class="summary-card">
+                            Records<br>
+                            <strong>{{ group.summary.count }}</strong>
+                        </div>
 
-            <div class="charts">
-                <div class="chart-box">
-                    <div class="chart-title">Weight Trend</div>
-                    <canvas id="massChart{{ loop.index0 }}"></canvas>
-                </div>
+                        <div class="summary-card">
+                            Avg. Weight<br>
+                            <strong>
+                                {% if group.summary.avg_mass is not none %}
+                                    {{ "%.1f"|format(group.summary.avg_mass) }} g
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </strong>
+                        </div>
 
-                <div class="chart-box">
-                    <div class="chart-title">Distance Trend</div>
-                    <canvas id="distanceChart{{ loop.index0 }}"></canvas>
-                </div>
+                        <div class="summary-card">
+                            Avg. Distance<br>
+                            <strong>
+                                {% if group.summary.avg_distance is not none %}
+                                    {{ "%.1f"|format(group.summary.avg_distance) }} cm
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </strong>
+                        </div>
 
-                <div class="chart-box">
-                    <div class="chart-title">Temperature Trend</div>
-                    <canvas id="tempChart{{ loop.index0 }}"></canvas>
-                </div>
-            </div>
+                        <div class="summary-card">
+                            Avg. Temperature<br>
+                            <strong>
+                                {% if group.summary.avg_temp is not none %}
+                                    {{ "%.1f"|format(group.summary.avg_temp) }} °C
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </strong>
+                        </div>
+                    </div>
 
-            <table>
-                <tr>
-                    <th>Weight (g)</th>
-                    <th>Distance (cm)</th>
-                    <th>Temperature (°C)</th>
-                    <th>Size</th>
-                    <th>Time</th>
-                    <th>Action</th>
-                </tr>
+                    <div class="charts">
+                        <div class="chart-box">
+                            <div class="chart-title">Weight Trend</div>
+                            <canvas id="massChart{{ loop.index0 }}"></canvas>
+                        </div>
 
-                {% for entry in group.records %}
-                    {% if entry.device_on %}
-                        <tr class="device-on">
-                            <td colspan="6">📡 Device turned on at {{ entry.timestamp }}</td>
-                        </tr>
-                    {% else %}
+                        <div class="chart-box">
+                            <div class="chart-title">Distance Trend</div>
+                            <canvas id="distanceChart{{ loop.index0 }}"></canvas>
+                        </div>
+
+                        <div class="chart-box">
+                            <div class="chart-title">Temperature Trend</div>
+                            <canvas id="tempChart{{ loop.index0 }}"></canvas>
+                        </div>
+                    </div>
+
+                    <table>
                         <tr>
-                            <td>
-                                {% if entry.mass is not none %}
-                                    {{ "%.1f"|format(entry.mass) }}
-                                {% else %}
-                                    -
-                                {% endif %}
-                            </td>
-
-                            <td>
-                                {% if entry.distance is not none %}
-                                    {{ "%.1f"|format(entry.distance) }}
-                                {% else %}
-                                    -
-                                {% endif %}
-                            </td>
-
-                            <td>
-                                {% if entry.temp is not none %}
-                                    {{ "%.1f"|format(entry.temp) }}
-                                {% else %}
-                                    -
-                                {% endif %}
-                            </td>
-
-                            <td>{{ entry.size or "-" }}</td>
-                            <td>{{ entry.timestamp }}</td>
-
-                            <td>
-                                <form method="post" action="/delete" style="display:inline;">
-                                    <input type="hidden" name="id" value="{{ entry.id }}">
-                                    <button type="submit">Delete</button>
-                                </form>
-                            </td>
+                            <th>Weight (g)</th>
+                            <th>Distance (cm)</th>
+                            <th>Temperature (°C)</th>
+                            <th>Size</th>
+                            <th>Time</th>
+                            <th>Action</th>
                         </tr>
-                    {% endif %}
-                {% endfor %}
-            </table>
-        </section>
-    {% endfor %}
+
+                        {% for entry in group.records %}
+                            {% if entry.device_on %}
+                                <tr class="device-on">
+                                    <td colspan="6">📡 Device turned on at {{ entry.timestamp }}</td>
+                                </tr>
+                            {% else %}
+                                <tr>
+                                    <td>
+                                        {% if entry.mass is not none %}
+                                            {{ "%.1f"|format(entry.mass) }}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+
+                                    <td>
+                                        {% if entry.distance is not none %}
+                                            {{ "%.1f"|format(entry.distance) }}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+
+                                    <td>
+                                        {% if entry.temp is not none %}
+                                            {{ "%.1f"|format(entry.temp) }}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+
+                                    <td>{{ entry.size or "-" }}</td>
+                                    <td>{{ entry.timestamp }}</td>
+
+                                    <td>
+                                        <form method="post" action="/delete" style="display:inline;">
+                                            <input type="hidden" name="id" value="{{ entry.id }}">
+                                            <button type="submit">Delete</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            {% endif %}
+                        {% endfor %}
+                    </table>
+                </section>
+            {% endfor %}
+        </main>
+    </div>
 
     <script>
         const chartData = {{ chart_data_json|safe }};
