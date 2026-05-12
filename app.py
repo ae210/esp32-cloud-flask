@@ -205,21 +205,23 @@ def index():
     grouped_list = list(grouped.values())
 
     # Scatter chart data: x = distance, y = weight
-    chart_data = []
-    for group in grouped_list:
-        scatter_points = []
+chart_data = []
+for group in grouped_list:
+    scatter_points = []
 
-        for distance, mass in zip(group["distance_values"], group["mass_values"]):
-            if distance is not None and mass is not None:
-                scatter_points.append({
-                    "x": distance,
-                    "y": mass
-                })
+    for distance, mass in zip(group["distance_values"], group["mass_values"]):
+        if distance is not None and mass is not None:
+            scatter_points.append({
+                "x": distance,
+                "y": mass
+            })
 
-        chart_data.append({
-            "date": group["date"],
-            "points": scatter_points,
-        })
+    chart_data.append({
+        "date": group["date"],
+        "points": scatter_points,
+        "time_labels": group["time_labels"],
+        "temp": group["temp_values"],
+    })
 
     chart_data_json = json.dumps(chart_data, ensure_ascii=False)
 
@@ -351,32 +353,34 @@ def index():
             color: #000000;
         }
 
-        .charts {
-            display: block;
-            margin-bottom: 14px;
-        }
+.charts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 14px;
+}
 
-        .chart-box {
-            border: 1.5px solid #000000;
-            border-radius: 8px;
-            padding: 10px;
-            background-color: #ffffff;
-            height: 360px;
-            box-sizing: border-box;
-        }
+.chart-box {
+    border: 1.5px solid #000000;
+    border-radius: 8px;
+    padding: 10px;
+    background-color: #ffffff;
+    height: 340px;
+    box-sizing: border-box;
+}
 
-        .chart-title {
-            font-size: 21px;
-            font-weight: bold;
-            color: #000000;
-            margin-bottom: 6px;
-        }
+.chart-title {
+    font-size: 21px;
+    font-weight: bold;
+    color: #000000;
+    margin-bottom: 6px;
+}
 
-        .chart-box canvas {
-            display: block;
-            width: 100% !important;
-            height: 300px !important;
-        }
+.chart-box canvas {
+    display: block;
+    width: 100% !important;
+    height: 280px !important;
+}
 
         table {
             border-collapse: collapse;
@@ -411,30 +415,24 @@ def index():
             margin-top: 24px;
         }
 
-        @media (max-width: 1000px) {
-            .layout {
-                flex-direction: column;
-            }
+@media (max-width: 1000px) {
+    .charts {
+        grid-template-columns: 1fr;
+    }
 
-            .sidebar {
-                width: 100%;
-                min-width: 0;
-                position: static;
-            }
+    .chart-box {
+        height: 320px;
+    }
 
-            .chart-box {
-                height: 320px;
-            }
-
-            .chart-box canvas {
-                height: 260px !important;
-            }
-        }
+    .chart-box canvas {
+        height: 260px !important;
+    }
+}
     </style>
 </head>
 
 <body>
-    <h1>🍓 Strawberry Harvest Data</h1>
+    <h1> Strawberry Harvest Data</h1>
 
     <form method="post" action="/clear" class="delete-all">
         <button type="submit">Delete All</button>
@@ -502,12 +500,17 @@ def index():
                         </div>
                     </div>
 
-                    <div class="charts">
-                        <div class="chart-box">
-                            <div class="chart-title">Distance–Weight Relationship</div>
-                            <canvas id="scatterChart{{ loop.index0 }}"></canvas>
-                        </div>
-                    </div>
+<div class="charts">
+    <div class="chart-box">
+        <div class="chart-title">Distance–Weight Relationship</div>
+        <canvas id="scatterChart{{ loop.index0 }}"></canvas>
+    </div>
+
+    <div class="chart-box">
+        <div class="chart-title">Temperature Trend</div>
+        <canvas id="tempChart{{ loop.index0 }}"></canvas>
+    </div>
+</div>
 
                     <table>
                         <tr>
@@ -575,94 +578,172 @@ def index():
         </main>
     </div>
 
-    <script>
-        const chartData = {{ chart_data_json|safe }};
+  <script>
+    const chartData = {{ chart_data_json|safe }};
 
-        const commonOptions = {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    labels: {
-                        color: "#000000",
-                        font: {
-                            size: 16
-                        }
-                    }
-                }
+    function createScatterChart(canvasId, points) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+
+        new Chart(canvas, {
+            type: "scatter",
+            data: {
+                datasets: [{
+                    label: "Distance–Weight",
+                    data: points,
+                    backgroundColor: "#000000",
+                    borderColor: "#000000",
+                    pointRadius: 5,
+                    pointHoverRadius: 7
+                }]
             },
-            scales: {
-                x: {
-                    type: "linear",
-                    title: {
-                        display: true,
-                        text: "Distance (cm)",
-                        color: "#000000",
-                        font: {
-                            size: 18,
-                            weight: "bold"
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        labels: {
+                            color: "#000000",
+                            font: {
+                                size: 16
+                            }
                         }
-                    },
-                    ticks: {
-                        color: "#000000",
-                        font: {
-                            size: 16
-                        }
-                    },
-                    grid: {
-                        color: "#dddddd"
                     }
                 },
-                y: {
-                    title: {
-                        display: true,
-                        text: "Weight (g)",
-                        color: "#000000",
-                        font: {
-                            size: 18,
-                            weight: "bold"
+                scales: {
+                    x: {
+                        type: "linear",
+                        title: {
+                            display: true,
+                            text: "Distance (cm)",
+                            color: "#000000",
+                            font: {
+                                size: 18,
+                                weight: "bold"
+                            }
+                        },
+                        ticks: {
+                            color: "#000000",
+                            font: {
+                                size: 16
+                            }
+                        },
+                        grid: {
+                            color: "#dddddd"
                         }
                     },
-                    ticks: {
-                        color: "#000000",
-                        font: {
-                            size: 16
+                    y: {
+                        title: {
+                            display: true,
+                            text: "Weight (g)",
+                            color: "#000000",
+                            font: {
+                                size: 18,
+                                weight: "bold"
+                            }
+                        },
+                        ticks: {
+                            color: "#000000",
+                            font: {
+                                size: 16
+                            }
+                        },
+                        grid: {
+                            color: "#dddddd"
                         }
-                    },
-                    grid: {
-                        color: "#dddddd"
                     }
                 }
             }
-        };
-
-        function createScatterChart(canvasId, points) {
-            const canvas = document.getElementById(canvasId);
-            if (!canvas) return;
-
-            new Chart(canvas, {
-                type: "scatter",
-                data: {
-                    datasets: [{
-                        label: "Distance–Weight",
-                        data: points,
-                        backgroundColor: "#000000",
-                        borderColor: "#000000",
-                        pointRadius: 5,
-                        pointHoverRadius: 7
-                    }]
-                },
-                options: commonOptions
-            });
-        }
-
-        chartData.forEach((group, index) => {
-            createScatterChart("scatterChart" + index, group.points);
         });
+    }
 
-        // Auto refresh every 5 seconds
-        setTimeout(() => location.reload(), 5000);
-    </script>
+    function createTemperatureChart(canvasId, labels, values) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+
+        new Chart(canvas, {
+            type: "line",
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: "Temperature",
+                    data: values,
+                    borderColor: "#000000",
+                    backgroundColor: "#000000",
+                    borderWidth: 2,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    tension: 0.2,
+                    spanGaps: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        labels: {
+                            color: "#000000",
+                            font: {
+                                size: 16
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: "Time",
+                            color: "#000000",
+                            font: {
+                                size: 18,
+                                weight: "bold"
+                            }
+                        },
+                        ticks: {
+                            color: "#000000",
+                            font: {
+                                size: 16
+                            }
+                        },
+                        grid: {
+                            color: "#dddddd"
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: "Temperature (°C)",
+                            color: "#000000",
+                            font: {
+                                size: 18,
+                                weight: "bold"
+                            }
+                        },
+                        ticks: {
+                            color: "#000000",
+                            font: {
+                                size: 16
+                            }
+                        },
+                        grid: {
+                            color: "#dddddd"
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    chartData.forEach((group, index) => {
+        createScatterChart("scatterChart" + index, group.points);
+        createTemperatureChart("tempChart" + index, group.time_labels, group.temp);
+    });
+
+    // Auto refresh every 5 seconds
+    setTimeout(() => location.reload(), 5000);
+</script>
 </body>
 </html>
 """,
