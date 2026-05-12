@@ -51,8 +51,9 @@ class HarvestData(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
 
-    # Timestamp sent from the ESP/T-SIM device
-    timestamp = db.Column(db.String(64), index=True)
+    # Timestamp sent from the device
+    # Existing Neon table is likely "timestamp without time zone"
+    timestamp = db.Column(db.DateTime, index=True)
 
     # Device power-on event flag
     device_on = db.Column(db.Boolean, default=False)
@@ -130,6 +131,8 @@ def format_date_label(dt):
 def format_time_label(dt, raw_timestamp):
     if dt is not None:
         return dt.strftime("%H:%M:%S")
+    if raw_timestamp is None:
+        return "-"
     return str(raw_timestamp)
 
 
@@ -166,27 +169,28 @@ def index():
                 "date": date_label,
                 "date_id": safe_date_id(date_label),
                 "records": [],
-                "labels": [],
+                "time_labels": [],
                 "mass_values": [],
                 "distance_values": [],
                 "temp_values": [],
                 "summary": {},
             }
 
-        # Measurement records only for graphs
+        # Measurement records only
         if not row.device_on:
             time_label = format_time_label(dt, row.timestamp)
 
-            grouped[date_label]["labels"].append(time_label)
+            grouped[date_label]["time_labels"].append(time_label)
             grouped[date_label]["mass_values"].append(row.mass)
             grouped[date_label]["distance_values"].append(row.distance)
             grouped[date_label]["temp_values"].append(row.temp)
 
         grouped[date_label]["records"].append(row)
 
-    # Reverse each day's graph data so time flows from old to new
+    # Reverse each day's data so the table and graph flow from old to new
     for group in grouped.values():
-        group["labels"] = list(reversed(group["labels"]))
+        group["records"] = list(reversed(group["records"]))
+        group["time_labels"] = list(reversed(group["time_labels"]))
         group["mass_values"] = list(reversed(group["mass_values"]))
         group["distance_values"] = list(reversed(group["distance_values"]))
         group["temp_values"] = list(reversed(group["temp_values"]))
@@ -200,14 +204,21 @@ def index():
 
     grouped_list = list(grouped.values())
 
+    # Scatter chart data: x = distance, y = weight
     chart_data = []
     for group in grouped_list:
+        scatter_points = []
+
+        for distance, mass in zip(group["distance_values"], group["mass_values"]):
+            if distance is not None and mass is not None:
+                scatter_points.append({
+                    "x": distance,
+                    "y": mass
+                })
+
         chart_data.append({
             "date": group["date"],
-            "labels": group["labels"],
-            "mass": group["mass_values"],
-            "distance": group["distance_values"],
-            "temp": group["temp_values"],
+            "points": scatter_points,
         })
 
     chart_data_json = json.dumps(chart_data, ensure_ascii=False)
@@ -231,19 +242,20 @@ def index():
             font-family: Arial, Helvetica, sans-serif;
             color: #000000;
             font-size: 20px;
-            margin: 24px;
+            margin: 20px;
             background-color: #ffffff;
         }
 
         h1 {
             color: #000000;
-            font-size: 40px;
-            margin-bottom: 20px;
+            font-size: 38px;
+            margin-top: 0;
+            margin-bottom: 16px;
         }
 
         h2 {
             color: #000000;
-            font-size: 30px;
+            font-size: 28px;
             margin-top: 0;
             margin-bottom: 12px;
             border-left: 8px solid #000000;
@@ -251,12 +263,12 @@ def index():
         }
 
         .delete-all {
-            margin-bottom: 20px;
+            margin-bottom: 16px;
         }
 
         button {
             font-size: 18px;
-            padding: 8px 14px;
+            padding: 7px 12px;
             color: #000000;
             background-color: #ffffff;
             border: 1.5px solid #000000;
@@ -270,25 +282,26 @@ def index():
 
         .layout {
             display: flex;
-            gap: 24px;
+            gap: 20px;
             align-items: flex-start;
         }
 
         .sidebar {
-            width: 230px;
-            min-width: 230px;
+            width: 220px;
+            min-width: 220px;
             position: sticky;
-            top: 20px;
+            top: 16px;
             border: 1.5px solid #000000;
             border-radius: 8px;
-            padding: 14px;
+            padding: 12px;
             background-color: #ffffff;
+            box-sizing: border-box;
         }
 
         .sidebar-title {
             font-size: 24px;
             font-weight: bold;
-            margin-bottom: 12px;
+            margin-bottom: 10px;
             color: #000000;
         }
 
@@ -296,8 +309,8 @@ def index():
             display: block;
             color: #000000;
             text-decoration: none;
-            font-size: 20px;
-            padding: 9px 6px;
+            font-size: 18px;
+            padding: 8px 4px;
             border-bottom: 1px solid #dddddd;
         }
 
@@ -311,71 +324,71 @@ def index():
         }
 
         section {
-            margin-bottom: 48px;
+            margin-bottom: 44px;
             scroll-margin-top: 20px;
         }
 
         .summary {
             display: flex;
-            gap: 12px;
+            gap: 10px;
             flex-wrap: wrap;
-            margin-bottom: 16px;
+            margin-bottom: 12px;
         }
 
         .summary-card {
             border: 1.5px solid #000000;
-            border-radius: 8px;
-            padding: 10px 14px;
-            min-width: 180px;
+            border-radius: 7px;
+            padding: 9px 12px;
+            min-width: 165px;
             background-color: #f8f8f8;
             color: #000000;
-            font-size: 20px;
+            font-size: 18px;
+            box-sizing: border-box;
         }
 
         .summary-card strong {
-            font-size: 22px;
+            font-size: 20px;
             color: #000000;
         }
 
- .charts {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 12px;
-    margin-bottom: 16px;
-}
+        .charts {
+            display: block;
+            margin-bottom: 14px;
+        }
 
-.chart-box {
-    border: 1.5px solid #000000;
-    border-radius: 8px;
-    padding: 8px;
-    background-color: #ffffff;
-    height: 250px;
-    box-sizing: border-box;
-}
+        .chart-box {
+            border: 1.5px solid #000000;
+            border-radius: 8px;
+            padding: 10px;
+            background-color: #ffffff;
+            height: 360px;
+            box-sizing: border-box;
+        }
 
-.chart-title {
-    font-size: 18px;
-    font-weight: bold;
-    color: #000000;
-    margin-bottom: 4px;
-}
+        .chart-title {
+            font-size: 21px;
+            font-weight: bold;
+            color: #000000;
+            margin-bottom: 6px;
+        }
 
-.chart-box canvas {
-    display: block;
-    width: 100% !important;
-    height: 200px !important;
-}
+        .chart-box canvas {
+            display: block;
+            width: 100% !important;
+            height: 300px !important;
+        }
+
         table {
             border-collapse: collapse;
             width: 100%;
-            font-size: 22px;
+            font-size: 20px;
             color: #000000;
-            margin-bottom: 32px;
+            margin-bottom: 28px;
         }
 
         th, td {
             border: 1.5px solid #000000;
-            padding: 10px 14px;
+            padding: 9px 12px;
             text-align: center;
             color: #000000;
         }
@@ -383,7 +396,7 @@ def index():
         th {
             background-color: #f0f0f0;
             font-weight: bold;
-            font-size: 22px;
+            font-size: 20px;
         }
 
         .device-on {
@@ -409,8 +422,12 @@ def index():
                 position: static;
             }
 
-            .charts {
-                grid-template-columns: 1fr;
+            .chart-box {
+                height: 320px;
+            }
+
+            .chart-box canvas {
+                height: 260px !important;
             }
         }
     </style>
@@ -487,18 +504,8 @@ def index():
 
                     <div class="charts">
                         <div class="chart-box">
-                            <div class="chart-title">Weight Trend</div>
-                            <canvas id="massChart{{ loop.index0 }}"></canvas>
-                        </div>
-
-                        <div class="chart-box">
-                            <div class="chart-title">Distance Trend</div>
-                            <canvas id="distanceChart{{ loop.index0 }}"></canvas>
-                        </div>
-
-                        <div class="chart-box">
-                            <div class="chart-title">Temperature Trend</div>
-                            <canvas id="tempChart{{ loop.index0 }}"></canvas>
+                            <div class="chart-title">Distance–Weight Relationship</div>
+                            <canvas id="scatterChart{{ loop.index0 }}"></canvas>
                         </div>
                     </div>
 
@@ -544,7 +551,14 @@ def index():
                                     </td>
 
                                     <td>{{ entry.size or "-" }}</td>
-                                    <td>{{ entry.timestamp }}</td>
+
+                                    <td>
+                                        {% if entry.timestamp %}
+                                            {{ entry.timestamp.strftime("%H:%M:%S") if entry.timestamp.__class__.__name__ == "datetime" else entry.timestamp }}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
 
                                     <td>
                                         <form method="post" action="/delete" style="display:inline;">
@@ -579,19 +593,20 @@ def index():
             },
             scales: {
                 x: {
+                    type: "linear",
+                    title: {
+                        display: true,
+                        text: "Distance (cm)",
+                        color: "#000000",
+                        font: {
+                            size: 18,
+                            weight: "bold"
+                        }
+                    },
                     ticks: {
                         color: "#000000",
                         font: {
-                            size: 15
-                        }
-                    },
-                    title: {
-                        display: true,
-                        text: "Time",
-                        color: "#000000",
-                        font: {
-                            size: 17,
-                            weight: "bold"
+                            size: 16
                         }
                     },
                     grid: {
@@ -599,18 +614,19 @@ def index():
                     }
                 },
                 y: {
+                    title: {
+                        display: true,
+                        text: "Weight (g)",
+                        color: "#000000",
+                        font: {
+                            size: 18,
+                            weight: "bold"
+                        }
+                    },
                     ticks: {
                         color: "#000000",
                         font: {
-                            size: 15
-                        }
-                    },
-                    title: {
-                        display: true,
-                        color: "#000000",
-                        font: {
-                            size: 17,
-                            weight: "bold"
+                            size: 16
                         }
                     },
                     grid: {
@@ -620,69 +636,28 @@ def index():
             }
         };
 
-        function createLineChart(canvasId, labels, values, label, yTitle, lineColor) {
+        function createScatterChart(canvasId, points) {
             const canvas = document.getElementById(canvasId);
             if (!canvas) return;
 
             new Chart(canvas, {
-                type: "line",
+                type: "scatter",
                 data: {
-                    labels: labels,
                     datasets: [{
-                        label: label,
-                        data: values,
-                        borderColor: lineColor,
-                        backgroundColor: lineColor,
-                        borderWidth: 2,
-                        pointRadius: 4,
-                        pointHoverRadius: 6,
-                        tension: 0.2,
-                        spanGaps: true
+                        label: "Distance–Weight",
+                        data: points,
+                        backgroundColor: "#000000",
+                        borderColor: "#000000",
+                        pointRadius: 5,
+                        pointHoverRadius: 7
                     }]
                 },
-                options: {
-                    ...commonOptions,
-                    scales: {
-                        ...commonOptions.scales,
-                        y: {
-                            ...commonOptions.scales.y,
-                            title: {
-                                ...commonOptions.scales.y.title,
-                                text: yTitle
-                            }
-                        }
-                    }
-                }
+                options: commonOptions
             });
         }
 
         chartData.forEach((group, index) => {
-            createLineChart(
-                "massChart" + index,
-                group.labels,
-                group.mass,
-                "Weight",
-                "Weight (g)",
-                "#000000"
-            );
-
-            createLineChart(
-                "distanceChart" + index,
-                group.labels,
-                group.distance,
-                "Distance",
-                "Distance (cm)",
-                "#000000"
-            );
-
-            createLineChart(
-                "tempChart" + index,
-                group.labels,
-                group.temp,
-                "Temperature",
-                "Temperature (°C)",
-                "#000000"
-            );
+            createScatterChart("scatterChart" + index, group.points);
         });
 
         // Auto refresh every 5 seconds
@@ -721,7 +696,9 @@ def update():
         return "Invalid", 400
 
     # Use server time if timestamp is not provided
-    ts = str(data.get("timestamp", datetime.utcnow().isoformat()))
+    ts = parse_datetime(data.get("timestamp"))
+    if ts is None:
+        ts = datetime.utcnow()
 
     # Measurement data record
     if "mass" in data and "distance" in data:
@@ -745,6 +722,7 @@ def update():
             distance=distance,
             temp=temp,
             size=size,
+            created_at=datetime.utcnow(),
         )
 
     # Device power-on event record
@@ -752,6 +730,7 @@ def update():
         row = HarvestData(
             timestamp=ts,
             device_on=True,
+            created_at=datetime.utcnow(),
         )
 
     else:
